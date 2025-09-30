@@ -1,0 +1,9 @@
+{
+  "keys": [
+    {
+      "kid": "rdm-service-v1",
+      "alg": "RS256",
+      "public_key": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAw0o97w==\n-----END PUBLIC KEY-----"
+    }
+  ]
+}

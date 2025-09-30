@@ -1,0 +1,28 @@
+<?xml version='1.0' encoding='utf-8'?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             targetNamespace="http://example.com/rdm/workflows">
+  <process id="rdmPublicationApproval" name="RDM Publication Approval" isExecutable="true">
+    <startEvent id="startEvent" name="Submission Received" />
+    <sequenceFlow id="flowStartToReview" sourceRef="startEvent" targetRef="reviewTask" />
+    <userTask id="reviewTask" name="Review Submission" flowable:candidateGroups="librarians">
+      <extensionElements>
+        <flowable:formProperty id="approved" name="Publication decision" type="enum" required="true" default="false">
+          <flowable:value id="true" name="Approve and publish" />
+          <flowable:value id="false" name="Request changes" />
+        </flowable:formProperty>
+        <flowable:formProperty id="embargoUntil" name="Embargo end date (optional)" type="date" />
+        <flowable:formProperty id="reviewNotes" name="Reviewer notes" type="string" />
+      </extensionElements>
+    </userTask>
+    <sequenceFlow id="flowReviewToDecision" sourceRef="reviewTask" targetRef="decisionGateway" />
+    <exclusiveGateway id="decisionGateway" name="Approved?" default="flowToRejection" />
+    <sequenceFlow id="flowPublishBypass" sourceRef="decisionGateway" targetRef="publicationEnd">
+      <conditionExpression xsi:type="tFormalExpression"><![CDATA[${approved == 'true'}]]></conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flowToRejection" sourceRef="decisionGateway" targetRef="rejectionEnd" />
+    <endEvent id="publicationEnd" name="Published" />
+    <endEvent id="rejectionEnd" name="Rejected" />
+  </process>
+</definitions>

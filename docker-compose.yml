@@ -1,0 +1,36 @@
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: gateway
+      POSTGRES_PASSWORD: gateway
+      POSTGRES_DB: gateway
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  flowable:
+    image: flowable/flowable-rest:latest
+    ports:
+      - "127.0.0.1:8090:8080"
+    env_file:
+      - .env
+    restart: unless-stopped
+
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    volumes:
+      - ./config:/app/config:ro
+    depends_on:
+      - flowable
+      - postgres
+    ports:
+      - "0.0.0.0:8088:8088"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
