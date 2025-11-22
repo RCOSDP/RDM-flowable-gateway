@@ -3,3 +3,4 @@ __pycache__/
 .env
 config/keyset.json
 config/*.key
+docker-compose.override.yml

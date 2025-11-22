@@ -23,6 +23,10 @@ class Settings:
     signing_private_key_path: Path | None
     gateway_internal_url: str
     debug_localhost_override: str | None
+    asice_private_key_path: Path | None
+    asice_certificate_path: Path | None
+    asice_tsa_url: str | None
+    asice_tsa_certificate_path: Path | None
 
 
 def _load_env(name: str) -> str:
@@ -50,6 +54,15 @@ def get_settings() -> Settings:
     gateway_internal_url = _load_env("GATEWAY_INTERNAL_URL")
     debug_localhost_override = os.environ.get("DEBUG_LOCALHOST_OVERRIDE")
 
+    asice_private_key = os.environ.get("ASICE_PRIVATE_KEY_PATH")
+    asice_certificate = os.environ.get("ASICE_CERTIFICATE_PATH")
+    asice_tsa_url = os.environ.get("ASICE_TSA_URL")
+    asice_tsa_certificate = os.environ.get("ASICE_TSA_CERTIFICATE_PATH")
+
+    asice_private_key_path = Path(asice_private_key) if asice_private_key else None
+    asice_certificate_path = Path(asice_certificate) if asice_certificate else None
+    asice_tsa_certificate_path = Path(asice_tsa_certificate) if asice_tsa_certificate else None
+
     return Settings(
         flowable_rest_base_url=flowable_rest_base_url,
         flowable_rest_username=flowable_rest_username,
@@ -64,6 +77,10 @@ def get_settings() -> Settings:
         signing_private_key_path=signing_private_key_path,
         gateway_internal_url=gateway_internal_url,
         debug_localhost_override=debug_localhost_override,
+        asice_private_key_path=asice_private_key_path,
+        asice_certificate_path=asice_certificate_path,
+        asice_tsa_url=asice_tsa_url,
+        asice_tsa_certificate_path=asice_tsa_certificate_path,
     )
 
 

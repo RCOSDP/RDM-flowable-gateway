@@ -66,5 +66,6 @@ class WaterButlerPathResponse(BaseModel):
     is_folder: bool = Field(alias='isFolder')
     name: Optional[str] = None
     waterbutler_url: str = Field(alias='waterbutlerUrl')
+    asice_url: Optional[str] = Field(default=None, alias='asiceUrl')
 
     model_config = ConfigDict(populate_by_name=True)

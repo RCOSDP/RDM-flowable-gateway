@@ -1,0 +1,3 @@
+[submodule "asice-cli"]
+	path = asice-cli
+	url = git@github.com:yacchin1205/RDM-asice-cli.git

@@ -12,7 +12,9 @@ RUN apt-get update \
 RUN pip install --no-cache-dir --upgrade pip
 
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+COPY asice-cli ./asice-cli
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir ./asice-cli
 
 COPY gateway ./gateway
 COPY config ./config
