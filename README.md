@@ -1,17 +1,17 @@
 # RDM-flowable-gateway
 
-Docker Compose skeleton for experimenting with the Flowable REST engine and the gateway service.
+Gateway service bridging GakuNin RDM and Flowable workflow engine. Flowable's open-source REST API supports only Basic authentication; this gateway accepts JWT-authenticated requests from RDM and securely proxies workflow access to GakuNin RDM APIs without exposing delegation tokens to Flowable.
 
 ## Getting started
 
-1. Copy `.env.sample` to `.env` and adjust the credentials that bootstrap Flowable REST. Set either `RDM_KEYSET_PATH` (local JSON file) or `RDM_KEYSET_URL` (RDM endpoint) so the gateway can load the RDM service's public keys used to sign workflow tokens. Configure `GATEWAY_SIGNING_KEY_ID`, `GATEWAY_SIGNING_PRIVATE_KEY_PATH`, `DATABASE_URL`, and `ENCRYPTION_KEY` so the gateway can connect to PostgreSQL, sign outbound tokens, and encrypt stored delegation tokens.
+1. Copy `.env.sample` to `.env` and adjust the credentials that bootstrap Flowable REST. Set either `RDM_KEYSET_PATH` (local JSON file) or `RDM_KEYSET_URL` (RDM endpoint) so the gateway can load the RDM service's public keys used to sign workflow tokens. Configure `GATEWAY_SIGNING_KEY_ID`, `GATEWAY_SIGNING_PRIVATE_KEY_PATH`, `DATABASE_URL`, and `ENCRYPTION_KEY` so the gateway can connect to PostgreSQL, sign outbound tokens, and encrypt stored delegation tokens. Define `RDM_ALLOWED_DOMAINS`, `RDM_ALLOWED_API_DOMAINS`, and `RDM_ALLOWED_WATERBUTLER_URLS` with comma-separated `scheme://host[:port]` entries limiting which upstream hosts the delegation proxy will contact.
 2. For local testing, copy `config/keyset.example.json` to `config/keyset.json` and replace the sample key with the PEM-encoded RDM public key (asymmetric algorithms only: RS*/ES*). In integrated environments prefer `RDM_KEYSET_URL` pointing at `/api/v1/workflow/keyset/` on the RDM backend.
 3. Copy `config/gateway-dev-v1.key.example` to `config/gateway-dev-v1.key` (or supply your own private key) so the gateway can sign requests back to RDM.
-3. Build and start the stack:
+4. Build and start the stack:
    ```bash
    docker compose up --build
    ```
-4. Flowable REST will be exposed on `http://127.0.0.1:8090/flowable-rest/`. The gateway FastAPI stub listens on `http://127.0.0.1:8088/`.
+5. Flowable REST will be exposed on `http://127.0.0.1:8090/flowable-rest/`. The gateway FastAPI stub listens on `http://127.0.0.1:8088/`.
 
 Both services share the same network, so the gateway can reach Flowable at the internal URL defined by `FLOWABLE_REST_BASE_URL` (defaults to `http://flowable:8080/flowable-rest`).
 
@@ -195,3 +195,4 @@ No `Authorization` header is needed; the gateway adds it automatically.
 - **Encryption at Rest**: All token values are encrypted using Fernet before storage
 - **Token Isolation**: Actual tokens never appear in Flowable variables or history
 - **Role-Based Access**: Separate tokens for creator, manager, and executor roles
+- **Strict Allowlist Enforcement**: Process variables `RDM_DOMAIN`, `RDM_API_DOMAIN`, and `RDM_WATERBUTLER_URL` are validated against `RDM_ALLOWED_DOMAINS`, `RDM_ALLOWED_API_DOMAINS`, and `RDM_ALLOWED_WATERBUTLER_URLS` respectively, preventing workflows from proxying tokens to untrusted hosts

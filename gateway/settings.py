@@ -4,6 +4,7 @@ import os
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlparse
 
 from .keyset import KeySet, load_keyset_from_path, load_keyset_from_url
 
@@ -27,6 +28,56 @@ class Settings:
     asice_certificate_path: Path | None
     asice_tsa_url: str | None
     asice_tsa_certificate_path: Path | None
+    http_timeout_seconds: float
+    allowed_rdm_domains: tuple[str, ...]
+    allowed_rdm_api_domains: tuple[str, ...]
+    allowed_rdm_waterbutler_urls: tuple[str, ...]
+
+
+def normalize_base_url(value: str) -> str:
+    """Normalize a base URL to scheme://host[:port]."""
+
+    candidate = value.strip()
+    if not candidate:
+        raise ValueError("URL must not be empty")
+
+    parsed = urlparse(candidate)
+    if parsed.scheme not in {"http", "https"}:
+        raise ValueError("URL must use http or https")
+    if not parsed.hostname:
+        raise ValueError("URL must include a hostname")
+    if parsed.path not in ("", "/") or parsed.params or parsed.query or parsed.fragment:
+        raise ValueError("URL must not include a path, query, or fragment")
+
+    scheme = parsed.scheme.lower()
+    hostname = parsed.hostname.lower()
+    port = parsed.port
+    default_port = 80 if scheme == "http" else 443
+
+    if port is None or port == default_port:
+        return f"{scheme}://{hostname}"
+    return f"{scheme}://{hostname}:{port}"
+
+
+def _load_allowed_urls(env_name: str) -> tuple[str, ...]:
+    raw = os.environ.get(env_name)
+    if not raw:
+        raise RuntimeError(f"Environment variable {env_name} must list allowed URLs")
+
+    entries = []
+    for part in raw.split(','):
+        candidate = part.strip()
+        if not candidate:
+            continue
+        try:
+            entries.append(normalize_base_url(candidate))
+        except ValueError as error:
+            raise RuntimeError(f"{env_name} entry '{candidate}' is invalid: {error}") from error
+
+    if not entries:
+        raise RuntimeError(f"Environment variable {env_name} must list at least one allowed URL")
+
+    return tuple(entries)
 
 
 def _load_env(name: str) -> str:
@@ -62,6 +113,10 @@ def get_settings() -> Settings:
     asice_private_key_path = Path(asice_private_key) if asice_private_key else None
     asice_certificate_path = Path(asice_certificate) if asice_certificate else None
     asice_tsa_certificate_path = Path(asice_tsa_certificate) if asice_tsa_certificate else None
+    http_timeout_seconds = float(os.environ.get("GATEWAY_HTTP_TIMEOUT", "30"))
+    allowed_rdm_domains = _load_allowed_urls("RDM_ALLOWED_DOMAINS")
+    allowed_rdm_api_domains = _load_allowed_urls("RDM_ALLOWED_API_DOMAINS")
+    allowed_rdm_waterbutler_urls = _load_allowed_urls("RDM_ALLOWED_WATERBUTLER_URLS")
 
     return Settings(
         flowable_rest_base_url=flowable_rest_base_url,
@@ -81,6 +136,10 @@ def get_settings() -> Settings:
         asice_certificate_path=asice_certificate_path,
         asice_tsa_url=asice_tsa_url,
         asice_tsa_certificate_path=asice_tsa_certificate_path,
+        http_timeout_seconds=http_timeout_seconds,
+        allowed_rdm_domains=allowed_rdm_domains,
+        allowed_rdm_api_domains=allowed_rdm_api_domains,
+        allowed_rdm_waterbutler_urls=allowed_rdm_waterbutler_urls,
     )
 
 

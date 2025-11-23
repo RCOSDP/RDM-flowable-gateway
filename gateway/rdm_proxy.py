@@ -313,7 +313,10 @@ async def _proxy_asice_upload(
         "Content-Type": "application/octet-stream",
     }
 
-    async with httpx.AsyncClient() as client:
+    timeout_seconds = settings.http_timeout_seconds
+    timeout = httpx.Timeout(timeout_seconds)
+
+    async with httpx.AsyncClient(timeout=timeout) as client:
         try:
             response = await client.put(
                 target_url,
@@ -494,6 +497,16 @@ async def rdm_proxy(
             role=role,
         )
 
+    logger.info(
+        "RDM proxy request | request_id=%s role=%s service=%s method=%s path=%s content_type=%s",
+        request_id,
+        role,
+        service,
+        request.method,
+        path,
+        request.headers.get("content-type"),
+    )
+
     service_url_map = {
         "web": _apply_localhost_override(delegation.rdm_domain),
         "api": _apply_localhost_override(delegation.rdm_api_domain),
@@ -509,13 +522,29 @@ async def rdm_proxy(
 
     target_url = f"{target_base_url.rstrip('/')}/{path}"
 
-    headers = dict(request.headers)
+    headers = {k: v for k, v in request.headers.items()}
+    content_type = headers.get("content-type")
     headers["Authorization"] = f"Bearer {token_value}"
     headers.pop("host", None)
 
     body = await request.body() if request.method not in {"GET", "HEAD", "OPTIONS"} else None
 
-    async with httpx.AsyncClient() as client:
+    if request.method not in {"GET", "HEAD", "OPTIONS"} and (content_type or "").startswith("application/json"):
+        logger.info(
+            "RDM proxy request body | request_id=%s role=%s service=%s method=%s path=%s content_type=%s body=%s",
+            request_id,
+            role,
+            service,
+            request.method,
+            path,
+            content_type,
+            body.decode("utf-8", errors="replace") if isinstance(body, (bytes, bytearray)) else body,
+        )
+
+    timeout_seconds = settings.http_timeout_seconds
+    timeout = httpx.Timeout(timeout_seconds)
+
+    async with httpx.AsyncClient(timeout=timeout) as client:
         try:
             response = await client.request(
                 method=request.method,
@@ -532,8 +561,26 @@ async def rdm_proxy(
                 detail=f"Failed to connect to RDM service: {str(error)}",
             ) from error
 
+    upstream_content_type = response.headers.get("content-type")
+    actual_length = len(response.content)
+    response_headers = dict(response.headers)
+    response_headers["content-length"] = str(actual_length)
+    logger.info(
+        "RDM proxy response | request_id=%s role=%s service=%s method=%s path=%s status=%s target_url=%s content_length=%s actual_length=%s content_type=%s",
+        request_id,
+        role,
+        service,
+        request.method,
+        path,
+        response.status_code,
+        target_url,
+        response_headers.get("content-length"),
+        actual_length,
+        upstream_content_type,
+    )
+
     return Response(
         content=response.content,
         status_code=response.status_code,
-        headers=dict(response.headers),
+        headers=response_headers,
     )

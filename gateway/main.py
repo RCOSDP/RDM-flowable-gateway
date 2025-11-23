@@ -19,7 +19,7 @@ from .flowable import FlowableError, get_flowable_client, translate_flowable_err
 from .models import DelegationToken
 from .rdm_proxy import router as rdm_proxy_router
 from .schemas import DelegationTokenData, RestVariable, StartProcessRequest, TaskActionRequest
-from .settings import get_settings
+from .settings import get_settings, normalize_base_url
 from .signing import SigningConfigurationError, get_public_key_pem
 
 logger = logging.getLogger(__name__)
@@ -73,6 +73,38 @@ def _build_proxy_variables(
                 ))
 
     return variables
+
+
+def _require_string(value: Any, label: str) -> str:
+    if not isinstance(value, str):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail={"message": f"{label} must be a string"},
+        )
+    candidate = value.strip()
+    if not candidate:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail={"message": f"{label} must not be empty"},
+        )
+    return candidate
+
+
+def _require_allowed_url(value: str, allowed: tuple[str, ...], label: str) -> str:
+    try:
+        normalized = normalize_base_url(value)
+    except ValueError as error:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail={"message": f"Invalid {label}: {error}"},
+        ) from error
+
+    if normalized not in allowed:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail={"message": f"{label} host is not allowlisted"},
+        )
+    return value
 
 
 @app.exception_handler(RequestValidationError)
@@ -267,6 +299,7 @@ async def create_process_instance(
     client = get_flowable_client()
 
     gateway_request_id = None
+    delegation = None
     if payload.delegation_tokens:
         gateway_request_id = str(uuid.uuid4())
 
@@ -282,15 +315,39 @@ async def create_process_instance(
             elif var.name == "RDM_WATERBUTLER_URL":
                 rdm_waterbutler_url = var.value
 
+        if not rdm_domain or not rdm_api_domain or not rdm_waterbutler_url:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "message": "delegationTokens require RDM_DOMAIN, RDM_API_DOMAIN, and RDM_WATERBUTLER_URL variables",
+                },
+            )
+
+        rdm_domain_value = _require_allowed_url(
+            _require_string(rdm_domain, "RDM_DOMAIN"),
+            settings.allowed_rdm_domains,
+            "RDM_DOMAIN",
+        )
+        rdm_api_domain_value = _require_allowed_url(
+            _require_string(rdm_api_domain, "RDM_API_DOMAIN"),
+            settings.allowed_rdm_api_domains,
+            "RDM_API_DOMAIN",
+        )
+        rdm_waterbutler_url_value = _require_allowed_url(
+            _require_string(rdm_waterbutler_url, "RDM_WATERBUTLER_URL"),
+            settings.allowed_rdm_waterbutler_urls,
+            "RDM_WATERBUTLER_URL",
+        )
+
         proxy_variables = _build_proxy_variables(gateway_request_id, payload.delegation_tokens)
         payload.variables.extend(proxy_variables)
 
         delegation = DelegationToken(
             gateway_request_id=gateway_request_id,
             process_instance_id=None,
-            rdm_domain=rdm_domain,
-            rdm_api_domain=rdm_api_domain,
-            rdm_waterbutler_url=rdm_waterbutler_url,
+            rdm_domain=rdm_domain_value,
+            rdm_api_domain=rdm_api_domain_value,
+            rdm_waterbutler_url=rdm_waterbutler_url_value,
         )
 
         for role, token_data in payload.delegation_tokens.items():
@@ -298,17 +355,17 @@ async def create_process_instance(
             setattr(delegation, f"{role}_owner", token_data.token_owner)
 
         db.add(delegation)
-        db.commit()
 
     try:
         response = await client.start_process(payload.to_flowable_payload())
     except FlowableError as error:
+        if delegation is not None:
+            db.rollback()
         raise translate_flowable_error(error)
 
     process_instance_id = response["id"]
 
-    if gateway_request_id:
-        delegation = db.query(DelegationToken).filter(DelegationToken.gateway_request_id == gateway_request_id).first()
+    if delegation is not None:
         delegation.process_instance_id = process_instance_id
         db.commit()
 
